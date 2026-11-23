@@ -1,0 +1,926 @@
+/* Sudoku — stylesheet */
+
+:root {
+	--bg: #f4f2ee;
+	--panel: #ffffff;
+	--ink: #23272f;
+	--ink-soft: #6b7280;
+	--line: #c9ccd3;
+	--line-strong: #2b2f37;
+	--accent: #2563eb;
+	--accent-soft: #dbeafe;
+	--peer: #e8eaf0;
+	--sel: #c7d8fe;
+	--same: #bfdbfe;
+	--wrong-bg: #fee2e2;
+	--wrong-ink: #dc2626;
+	--hint-ink: #b45309;
+	--hint-bg: #fef3c7;
+	--danger: #dc2626;
+	--gold: #f59e0b;
+	--correct: #16a34a;
+	--correct-glow: rgba(22, 163, 74, 0.55);
+	--accent-glow: rgba(37, 99, 235, 0.12);
+	--ambient: rgba(37, 99, 235, 0.05);
+	--shadow: 0 10px 30px rgba(30, 35, 50, 0.12);
+	/* Let native UI (scrollbars, form controls) follow the page theme. */
+	color-scheme: light dark;
+	accent-color: var(--accent);
+	--target-size: 24px;
+}
+
+@media (pointer: coarse) {
+	:root {
+		--target-size: 44px;
+	}
+}
+
+/* Minimum hit area for every control, 24px for mouse / 44px for touch. */
+:where(
+	button,
+	select,
+	textarea,
+	input:not([type="checkbox"], [type="radio"]),
+	[role="button"],
+	nav a,
+	label:has(input[type="checkbox"], input[type="radio"])
+) {
+	min-block-size: var(--target-size);
+	min-inline-size: var(--target-size);
+}
+:where([role="button"], nav a, label:has(input[type="checkbox"], input[type="radio"])) {
+	display: inline-flex;
+	align-items: center;
+}
+
+/* Explicit theme choice (data-theme on <html>, set by ui.js). */
+:root[data-theme="light"] {
+	color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--bg: #10131a;
+	--panel: #181c25;
+	--ink: #e5e9f2;
+	--ink-soft: #98a2b5;
+	--line: #2c3342;
+	--line-strong: #aab3c5;
+	--accent: #60a5fa;
+	--accent-soft: #1e3a5f;
+	--peer: #1f2430;
+	--sel: #27407a;
+	--same: #2b4a8b;
+	--wrong-bg: #4c1d24;
+	--wrong-ink: #fca5a5;
+	--hint-ink: #fbbf24;
+	--hint-bg: #3a2d12;
+	--correct: #22c55e;
+	--correct-glow: rgba(34, 197, 94, 0.5);
+	--accent-glow: rgba(96, 165, 250, 0.14);
+	--ambient: rgba(96, 165, 250, 0.07);
+	--shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* System preference applies only while the choice is "system"
+   (no explicit data-theme="light" override). */
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--bg: #10131a;
+		--panel: #181c25;
+		--ink: #e5e9f2;
+		--ink-soft: #98a2b5;
+		--line: #2c3342;
+		--line-strong: #aab3c5;
+		--accent: #60a5fa;
+		--accent-soft: #1e3a5f;
+		--peer: #1f2430;
+		--sel: #27407a;
+		--same: #2b4a8b;
+		--wrong-bg: #4c1d24;
+		--wrong-ink: #fca5a5;
+		--hint-ink: #fbbf24;
+		--hint-bg: #3a2d12;
+		--correct: #22c55e;
+		--correct-glow: rgba(34, 197, 94, 0.5);
+		--accent-glow: rgba(96, 165, 250, 0.14);
+		--ambient: rgba(96, 165, 250, 0.07);
+		--shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", sans-serif;
+	background:
+		radial-gradient(80vmax 70vmax at 50% -15%, var(--ambient), transparent 60%), var(--bg);
+	color: var(--ink);
+	min-block-size: 100dvb;
+	overflow-wrap: break-word;
+	transition:
+		background-color 0.3s ease,
+		color 0.3s ease;
+}
+
+.mono {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Smooth color transitions when switching theme.
+   Element transitions are applied per-theme below for specificity. */
+body,
+.board,
+.cell,
+.btn,
+.pad-btn,
+.hud,
+.rules-card,
+select,
+.btn:focus-visible,
+.btn:hover,
+.rules-btn:hover {
+	transition:
+		background-color 0.3s ease,
+		color 0.3s ease,
+		border-color 0.3s ease,
+		box-shadow 0.3s ease;
+}
+
+/* Accessible focus rings for keyboard users. */
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+	border-radius: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Layout                                                              */
+/* ------------------------------------------------------------------ */
+
+.app {
+	inline-size: min(100%, 36rem);
+	margin-inline: auto;
+	padding-block: 12px 14px;
+	padding-inline: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	/* Fit the whole game inside the viewport: the app takes the full
+     block size and the board zone flexes to absorb/shrink the remainder. */
+	block-size: 100dvb;
+}
+
+.topbar {
+	display: flex;
+	align-items: safe center;
+	justify-content: space-between;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.topbar-left {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.logo {
+	margin: 0;
+	font-size: clamp(1rem, 0.95rem + 0.3vw, 1.15rem);
+	letter-spacing: 0.12em;
+	font-weight: 800;
+	text-wrap: balance;
+}
+
+.rules-btn {
+	padding: 3px 7px;
+	font-size: 0.75rem;
+	font-weight: 700;
+}
+
+.game-select {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.game-select label {
+	font-size: 0.75rem;
+	color: var(--ink-soft);
+}
+
+select {
+	font: inherit;
+	font-size: 0.9rem;
+	padding: 5px 8px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: var(--panel);
+	color: var(--ink);
+}
+
+.game-select .btn {
+	padding: 7px 9px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
+
+.btn {
+	font: inherit;
+	font-weight: 600;
+	padding: 8px 12px;
+	border-radius: 10px;
+	border: 1px solid var(--line);
+	background: var(--panel);
+	color: var(--ink);
+	cursor: pointer;
+	transition:
+		transform 0.06s ease,
+		background 0.15s ease,
+		border-color 0.15s ease,
+		box-shadow 0.2s ease;
+}
+
+.btn:hover {
+	border-color: var(--accent);
+}
+
+.btn:active {
+	transform: translateY(1px) scale(0.99);
+}
+
+.btn.primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+.btn.primary:hover {
+	filter: brightness(1.07);
+}
+
+.btn.active {
+	background: var(--accent-soft);
+	border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Board                                                               */
+/* ------------------------------------------------------------------ */
+
+/* The board zone is the flexible part of the app: it takes whatever
+   vertical space is left and hands the board a perfect square. */
+.board-wrap {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+	align-items: safe center;
+	justify-content: center;
+	container: board / size; /* named: the board reads leftover height via cqb */
+}
+
+.board {
+	display: grid;
+	grid-template-columns: repeat(9, minmax(0, 1fr));
+	/* Square side = smallest of available inline size and leftover block size.
+     Never overflows the column, never pushes content below the fold. */
+	inline-size: min(100%, 100cqb);
+	aspect-ratio: 1;
+	container: cells / size; /* digits scale with cqi */
+	background: var(--panel);
+	border: 3px solid var(--line-strong);
+	border-radius: 12px;
+	overflow: clip; /* clip the rounded corners without creating a scroll container */
+	box-shadow: var(--shadow);
+	user-select: none;
+	transition:
+		transform 0.3s ease,
+		background-color 0.3s ease,
+		box-shadow 0.3s ease;
+}
+
+/* New-game entrance animation. */
+.board.new {
+	animation: board-in 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes board-in {
+	0% {
+		transform: scale(0.96);
+		opacity: 0.35;
+	}
+	100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.cell {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-right: 1px solid var(--line);
+	border-bottom: 1px solid var(--line);
+	cursor: pointer;
+	/* Font-relative min/max keep WCAG text zoom working; cqi scales with the cell. */
+	font-size: clamp(0.875rem, 5cqi, 1.5rem);
+	font-weight: 500;
+	aspect-ratio: 1;
+	transition:
+		background-color 0.1s ease,
+		box-shadow 0.2s ease,
+		color 0.2s ease;
+}
+
+.cell:nth-child(9n) {
+	border-right: none;
+}
+.cell:nth-child(n + 73) {
+	border-bottom: none;
+}
+
+/* thick box borders */
+.cell-v3 {
+	border-right: 3px solid var(--line-strong) !important;
+}
+.cell-h3 {
+	border-bottom: 3px solid var(--line-strong) !important;
+}
+
+.cell.peer {
+	background: var(--peer);
+}
+.cell.selected {
+	background: var(--sel);
+	box-shadow: inset 0 0 0 2px var(--accent);
+}
+.cell.same {
+	background: var(--same);
+}
+.cell.same .digit {
+	font-weight: 700;
+}
+
+.cell .digit {
+	line-height: 1;
+}
+.given .digit {
+	color: var(--ink);
+	font-weight: 700;
+}
+.cell:not(.given) .digit {
+	color: var(--accent);
+}
+.cell.wrong .digit {
+	color: var(--wrong-ink);
+	background: var(--wrong-bg);
+	border-radius: 6px;
+	inline-size: 86%;
+	text-align: center;
+	font-weight: 700;
+}
+
+.cell.hinted {
+	background: var(--hint-bg);
+}
+.cell.hinted .digit {
+	color: var(--hint-ink);
+}
+
+.cell.flash {
+	animation: flash 0.55s ease-in-out 2;
+}
+
+@keyframes flash {
+	0%,
+	100% {
+		background: var(--peer);
+	}
+	50% {
+		background: var(--wrong-bg);
+	}
+}
+
+/* --- cell feedback animations --- */
+
+/* Pop a digit into place. */
+.cell.pop .digit {
+	animation: pop 0.32s cubic-bezier(0.2, 1.4, 0.4, 1);
+	transform-origin: center;
+}
+@keyframes pop {
+	0% {
+		transform: scale(0.25);
+		opacity: 0.4;
+	}
+	60% {
+		transform: scale(1.14);
+		opacity: 1;
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+
+/* Soft green ring when the digit is correct. */
+.cell.correct {
+	animation: correct-ring 0.5s ease-out;
+}
+@keyframes correct-ring {
+	0% {
+		box-shadow: inset 0 0 0 2px var(--correct-glow);
+	}
+	100% {
+		box-shadow: inset 0 0 0 0px transparent;
+	}
+}
+
+/* Shake on a wrong placement. */
+.cell.shake {
+	animation: shake 0.3s ease;
+}
+@keyframes shake {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	20%,
+	60% {
+		transform: translateX(-3px);
+	}
+	40%,
+	80% {
+		transform: translateX(3px);
+	}
+}
+
+/* Gold ring pulse right after a hint. */
+.cell.hinted-pulse {
+	animation: hint-pulse 0.8s ease;
+}
+@keyframes hint-pulse {
+	0% {
+		box-shadow: 0 0 0 3px var(--gold);
+	}
+	100% {
+		box-shadow: 0 0 0 0px transparent;
+	}
+}
+
+/* pencil notes: 3x3 mini grid (shown when the cell has at least one note) */
+.cell .notes {
+	position: absolute;
+	inset: 3%;
+	display: none;
+	grid-template-columns: repeat(3, 1fr);
+	grid-template-rows: repeat(3, 1fr);
+	font-size: 0.42em;
+	color: var(--ink-soft);
+	line-height: 1;
+}
+
+.cell.has-notes .notes {
+	display: grid;
+}
+
+.cell .notes span {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                            */
+/* ------------------------------------------------------------------ */
+
+.controls {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: center;
+}
+
+.control-row {
+	display: flex;
+	align-items: safe center;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px;
+}
+
+.check-msg {
+	min-block-size: 1.2em;
+	margin: 0;
+	font-size: 0.85rem;
+	color: var(--ink-soft);
+	text-wrap: pretty;
+}
+
+/* ------------------------------------------------------------------ */
+/* Digit pad                                                           */
+/* ------------------------------------------------------------------ */
+
+.pad {
+	display: grid;
+	grid-template-columns: repeat(9, minmax(0, 1fr));
+	gap: 6px;
+}
+
+.pad-btn {
+	position: relative;
+	font: inherit;
+	border: 1px solid var(--line);
+	background: var(--panel);
+	color: var(--ink);
+	border-radius: 10px;
+	aspect-ratio: 1;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		transform 0.06s ease,
+		background 0.15s ease;
+}
+
+.pad-btn:hover:not(:disabled) {
+	border-color: var(--accent);
+}
+.pad-btn:active:not(:disabled) {
+	transform: scale(0.95);
+}
+
+.pad-num {
+	font-size: clamp(1.1rem, 1rem + 1vw, 1.6rem);
+	font-weight: 700;
+}
+
+.pad-left {
+	position: absolute;
+	top: 4px;
+	right: 7px;
+	font-size: 0.6rem;
+	color: var(--ink-soft);
+	font-variant-numeric: tabular-nums;
+}
+
+.pad-btn.complete {
+	opacity: 0.35;
+}
+.pad-btn:disabled {
+	cursor: default;
+}
+
+.pad-btn:active:not(:disabled) {
+	transform: scale(0.88);
+	background: var(--accent-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* HUD                                                                 */
+/* ------------------------------------------------------------------ */
+
+.hud {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 8px 14px;
+	align-items: safe center;
+	padding: 10px 14px;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+}
+
+.hud-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.85rem;
+}
+
+.hud-label {
+	color: var(--ink-soft);
+}
+.hud-value {
+	font-weight: 700;
+}
+.status-label {
+	color: var(--ink-soft);
+	font-style: italic;
+}
+
+.pips {
+	display: inline-flex;
+	gap: 4px;
+}
+
+.pip,
+.pdot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	border: 1.5px solid var(--line);
+	display: inline-block;
+}
+
+.pip.filled {
+	background: var(--danger);
+	border-color: var(--danger);
+}
+.pdot.filled {
+	background: var(--gold);
+	border-color: var(--gold);
+}
+
+.hud-item.strict {
+	cursor: pointer;
+	color: var(--ink-soft);
+}
+.hud-item.strict input {
+	accent-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Progress bar                                                        */
+/* ------------------------------------------------------------------ */
+
+.progress-wrap {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 4px 14px;
+	font-size: 0.78rem;
+	color: var(--ink-soft);
+	font-weight: 600;
+}
+
+.progress-track {
+	flex: 1;
+	min-inline-size: 0;
+	block-size: 8px;
+	border-radius: 999px;
+	background: var(--peer);
+	overflow: clip;
+}
+
+.progress-fill {
+	block-size: 100%;
+	inline-size: 0%;
+	border-radius: 999px;
+	background-color: var(--accent);
+	background-image: linear-gradient(90deg, var(--accent), var(--correct) 50%, var(--accent));
+	background-size: 200% 100%;
+	animation: shimmer 2.5s linear infinite;
+	transition: width 0.35s ease;
+}
+@keyframes shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+/* ------------------------------------------------------------------ */
+/* Modal                                                               */
+/* ------------------------------------------------------------------ */
+
+.modal {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: safe center;
+	justify-content: center;
+	overflow: auto;
+	overscroll-behavior: contain; /* don't chain scroll gestures to the page */
+	background: rgba(10, 12, 18, 0.55);
+	backdrop-filter: blur(3px);
+	z-index: 50;
+	animation: fade 0.2s ease;
+}
+
+.modal.hidden {
+	display: none;
+}
+
+.modal-card {
+	background: var(--panel);
+	color: var(--ink);
+	border-radius: 18px;
+	padding: 28px 30px 24px;
+	inline-size: min(92dvw, 360px);
+	text-align: center;
+	box-shadow: var(--shadow);
+	animation: pop 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+@keyframes fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes pop {
+	from {
+		transform: scale(0.85);
+		opacity: 0;
+	}
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.modal-emoji {
+	font-size: 3rem;
+	line-height: 1;
+}
+
+.modal-card h2 {
+	margin: 10px 0 4px;
+	font-size: 1.5rem;
+	text-wrap: balance;
+}
+
+/* ---- rules modal --------------------------------------------------- */
+
+.rules-card {
+	inline-size: min(92dvw, 440px);
+	max-block-size: 86dvb;
+	overflow-y: auto;
+	scrollbar-gutter: stable; /* reserve scrollbar space, no layout shift */
+	overscroll-behavior: contain;
+	text-align: left;
+}
+
+.modal-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	margin-bottom: 4px;
+}
+
+.modal-head h2 {
+	margin: 0;
+}
+
+.modal-close {
+	font: inherit;
+	font-size: 0.95rem;
+	line-height: 1;
+	padding: 6px 10px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--ink-soft);
+	cursor: pointer;
+}
+
+.modal-close:hover {
+	background: var(--bg);
+	color: var(--ink);
+}
+
+.rules-card h3 {
+	margin: 16px 0 4px;
+	font-size: 0.72rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.09em;
+	color: var(--ink-soft);
+}
+
+.rules-card p,
+.rules-card li {
+	margin: 4px 0;
+	font-size: 0.88rem;
+	line-height: 1.45;
+	text-wrap: pretty;
+}
+
+.rules-card ul {
+	margin: 4px 0;
+	padding-left: 18px;
+}
+
+.icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	font-size: 1.05rem;
+	line-height: 1;
+	border-radius: 9px;
+}
+
+kbd {
+	font:
+		0.78em / 1 ui-monospace,
+		SFMono-Regular,
+		Menlo,
+		Consolas,
+		monospace;
+	background: var(--bg);
+	border: 1px solid var(--line);
+	border-bottom-width: 2px;
+	border-radius: 5px;
+	padding: 2px 5px;
+	white-space: nowrap;
+}
+
+#modal-sub {
+	margin: 0 0 6px;
+	color: var(--ink-soft);
+	font-size: 0.95rem;
+}
+
+.modal-record {
+	margin: 0 0 10px;
+	color: var(--gold);
+	font-weight: 700;
+	min-block-size: 1.2em;
+}
+
+.modal-stats {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	margin: 12px 0 18px;
+	text-align: left;
+}
+
+.stat {
+	background: var(--bg);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 8px 10px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 0.85rem;
+}
+
+.stat span {
+	color: var(--ink-soft);
+}
+.stat b {
+	font-variant-numeric: tabular-nums;
+}
+
+.modal-actions {
+	display: flex;
+	justify-content: center;
+}
+
+/* ------------------------------------------------------------------ */
+/* Confetti celebration                                                */
+/* ------------------------------------------------------------------ */
+
+#confetti-layer {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 100;
+	overflow: clip;
+}
+
+.confetti-piece {
+	position: absolute;
+	top: -14px;
+	opacity: 0;
+	animation-name: confetti-fall;
+	animation-timing-function: linear;
+	animation-iteration-count: 1;
+}
+@keyframes confetti-fall {
+	0% {
+		transform: translateY(-8vh) translateX(0) rotate(0deg);
+		opacity: 1;
+	}
+	65% {
+		opacity: 1;
+	}
+	100% {
+		transform: translateY(108vh) translateX(var(--drift)) rotate(640deg);
+		opacity: 0;
+	}
+}

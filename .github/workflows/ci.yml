@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Node 20 ships global WebSocket behind a flag; the page SDK uses it.
+          - node: '20'
+            node-options: --experimental-websocket
+          - node: '22'
+            node-options: ''
+    name: Node ${{ matrix.node }}
+    env:
+      NODE_OPTIONS: ${{ matrix.node-options }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx tsc --noEmit
+      - run: npm run check
+      - run: npm test
+      - run: npm run selfcheck
+      - run: node dist/cli.js test

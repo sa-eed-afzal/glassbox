@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  echo-app — the conformance fixture page (spec §9.2). Served by
+  `glassbox test` (loopback, ephemeral port) alongside /glassbox.js from dist/.
+  Registers the same tools as page.ts: echo, add, commit (write tier →
+  consent gate), plus a sampling handler — the surface the widget and the
+  headless PageActor both speak.
+-->
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>echo-app — glassbox fixture</title>
+	</head>
+	<body>
+		<h1>echo-app</h1>
+		<p>
+			Glassbox conformance fixture (spec §9.2). Paste the connect code below — mint one with
+			<code>glassbox code --port &lt;bridge-port&gt; --origin http://127.0.0.1:&lt;this-port&gt; --app echo-app</code>
+			(see the <code>glassbox test --hold</code> banner).
+		</p>
+		<div id="gb"></div>
+		<script type="module">
+			const { Glassbox, renderWidget } = await import("/glassbox.js");
+			const gbox = new Glassbox("echo-app");
+			gbox.tool("echo", "Echo a string back", { text: { type: "string" } }, ({ text }) => text);
+			gbox.tool("add", "Sum two numbers", { a: { type: "number" }, b: { type: "number" } },
+				({ a, b }) => ({ sum: Number(a) + Number(b) })
+			);
+			gbox.tool("commit", "Write a marker into the page (consent-gated)", { tier: "write" }, () => ({ ok: true }));
+			gbox.sampling(({ schema }) => ({ answer: "42", schemaHonored: schema !== undefined }));
+			renderWidget(gbox, { mount: "#gb" });
+		</script>
+	</body>
+</html>

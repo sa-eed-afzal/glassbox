@@ -1,0 +1,31 @@
+node_modules/
+dist/
+*.log
+
+# editor / agent local state — never commit
+.zed/
+.playwright-cli/
+*.swp
+.DS_Store
+
+# throwaway working dirs (drill runs, one-off scripts)
+*-tmp/
+
+# local backup of the pre-scrub spec (see docs/)
+docs/spec.md.orig
+
+# engineering journals / session handoffs — kept locally, not published
+work.md
+docs/handoffs/
+
+# demo-video production tree (raw takes, renders, HF composition) — never commit
+demo-video/
+
+# demo policy file for the video's test apps (read by the bridge from its cwd);
+# repo hygiene: real-user projects keep their own glassbox.json
+glassbox.json
+
+# sudoku example: raw dev/tooling artifacts and local captures stay local;
+# the curated screenshots live in docs/images/
+sudoku/tmp/
+sudoku/*.png
