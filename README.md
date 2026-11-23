@@ -5,14 +5,17 @@
 ![Runtime deps: 3](https://img.shields.io/badge/runtime%20deps-3-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Your AI coding agent, with hands on a live web page — and a trust layer you
+**Your AI agent, with hands on a live web page — and a trust layer you
 can defend.**
 
-mcp-glassbox is an MCP server that lets an MCP client (Zed, Claude Desktop,
-Cursor) discover and call **tools that live on a web page**: page state, game
-moves, form actions, sampling prompts — anything your page registers. The
-agent acts on the page through a transparent local bridge; every call is
-consent-gated where you want it and lands in an audit trail you can inspect.
+mcp-glassbox is a standard MCP server, so **any MCP-capable agent** can
+discover and call **tools that live on a web page**: page state, game moves,
+form actions, sampling prompts — anything your page registers. It works with
+coding agents and editors (Claude Code, Zed, Cursor), desktop assistants
+(Claude Desktop) and general-purpose agents like
+[OpenWorker](docs/openworker.md). The agent acts on the page through a
+transparent local bridge; every call is consent-gated where you want it and
+lands in an audit trail you can inspect.
 
 ![Glassbox demo: pair with a one-shot code, the page's tools appear in the MCP client, the agent reads the board, every write stops at a consent modal, and each call lands in the audit log](docs/images/glassbox-demo.gif)
 
@@ -139,7 +142,7 @@ observation channel is part of the requirement.
 
 ```mermaid
 flowchart LR
-  A[MCP client agent<br/>Zed · Claude Desktop · Cursor] -->|MCP stdio| B[glassbox bridge<br/>one supervised process]
+  A[Any MCP client agent<br/>Claude Code · Zed · Cursor · OpenWorker …] -->|MCP stdio| B[glassbox bridge<br/>one supervised process]
   B -->|WS · 127.0.0.1 · ephemeral port| C[Page SDK<br/>glassbox.js in the browser]
   C --- D[Widget: status · activity feed<br/>consent modal · QR]
   B --> E[audit.jsonl]
