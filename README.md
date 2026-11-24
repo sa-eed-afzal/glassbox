@@ -12,8 +12,8 @@ mcp-glassbox is a standard MCP server, so **any MCP-capable agent** can
 discover and call **tools that live on a web page**: page state, game moves,
 form actions, sampling prompts — anything your page registers. It works with
 coding agents and editors (Claude Code, Zed, Cursor), desktop assistants
-(Claude Desktop) and general-purpose agents like
-[OpenWorker](docs/openworker.md). The agent acts on the page through a
+(Claude Desktop) and AI coworkers like [OpenWorker](docs/openworker.md)
+(desktop app or browser UI). The agent acts on the page through a
 transparent local bridge; every call is consent-gated where you want it and
 lands in an audit trail you can inspect.
 
@@ -27,8 +27,8 @@ consent modal → the agent plays 46 moves → audit trail.
 
 ![OpenWorker agent on the left, Sudoku page on the right: the agent mints a one-time code, the page pairs, every input_number call waits for a human Approve on the page, and the agent finishes 12 moves with 0 mistakes](docs/images/openworker-demo.gif)
 
-<sub>A general-purpose agent, not a coding agent: [OpenWorker](https://github.com/andrewyng/openworker)
-pairs with the page, reads the board through `get_state`, solves it with a script,
+<sub>An AI coworker for everyday work, not a coding agent: [OpenWorker](https://github.com/andrewyng/openworker),
+shown here in its browser UI, pairs with the page, reads the board through `get_state`, solves it with a script,
 and places 12 digits. Each placement was approved by a human on the page.
 Setup guide: [`docs/openworker.md`](docs/openworker.md).</sub>
 

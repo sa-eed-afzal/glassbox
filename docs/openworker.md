@@ -2,8 +2,8 @@
 
 [OpenWorker](https://github.com/andrewyng/openworker) connects to MCP servers
 over stdio using the official MCP Python SDK, so Glassbox plugs in as a standard
-server — no changes to OpenWorker needed. Every step below was run end-to-end against the OpenWorker desktop app
-on 2026-11-22: the agent minted a connect code, the page paired, and the agent
+server — no changes to OpenWorker needed. Every step below was run end-to-end against the OpenWorker app (run from
+source, browser UI) on 2026-11-22: the agent minted a connect code, the page paired, and the agent
 called `127-0-0-1-3002__get_state` and received the live Sudoku grid
 ([verification log](#verification-log)).
 
@@ -195,7 +195,7 @@ page-side consent modal. Choose:
 
 ## Verification log
 
-Run on 2026-11-22 against the OpenWorker desktop app (dev build at
+Run on 2026-11-22 against the OpenWorker app (run from source, browser UI at
 `localhost:5173`), Glassbox at the commit that added this guide.
 
 1. **Connector test:** `stdio · 6 tools · tested just now` → **● Ready**, all
