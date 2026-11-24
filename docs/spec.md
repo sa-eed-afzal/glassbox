@@ -178,6 +178,12 @@ Client ⇄ bridge uses standard MCP `protocolVersion` negotiation.
   typed `PROTOCOL_ERROR` "origin mismatch …" + socket close, §5.1). Comparisons use the
   normalized host key (scheme, path, query stripped; lowercased). One-shot means one
   attempt: a rejected exchange still consumes the code, so a retry requires re-minting.
+  An exchange **without** an origin is rejected (HTTP 400) before the code is consumed,
+  so omitting the field cannot skip the check (2026-11-24).
+- **The origin is a claim, not proof.** A browser cannot fake it, but a non-browser
+  client can present any origin, and the agent can mint codes itself (`glassbox_code`).
+  So a code is enough to *pair*, but not enough to *act* on a page that is already
+  connected: see §5.2a.
 - **Code format (M3 decision, 2026-09-29):** a connect code is the single base64url
   string of `{ v, host, port, channel, app, codeId, expMs }` — self-describing: the
   endpoint is embedded in the code because the code is the *only discovery path*
@@ -220,6 +226,28 @@ Client ⇄ bridge uses standard MCP `protocolVersion` negotiation.
 - Nothing secret is ever embedded in a base64 blob a human can read (fixes D5-E evidence:
   the old token literally contained the internal address + token).
 - Revocation: `gbox-drop <sid>` (CLI) or "Disconnect" in widget → immediate RST.
+
+### 5.2a Admission: a new connection needs a human OK (2026-11-24)
+
+Found by testing a real agent run: a stuck agent minted a code and wrote its own
+WebSocket client to reach the page directly. Without admission, such a client could
+become the newest tab (and so receive the page's calls), approve its own consent, or
+re-register a tool at a lower tier.
+
+- The **first** live session on a channel is admitted on attach.
+- A **later** session (a second tab, or a self-paired client) starts *not admitted*.
+  The bridge sends a `consent.request` with `tool: "new connection"`, `tier: "dangerous"`
+  and `args: { tab, app, origin }` to the admitted session that currently receives calls,
+  so the human sees an Approve/Deny modal on the page they already trust. Existing widgets
+  render it with no SDK change.
+- Until approved, the newcomer receives no calls, prompts, resources or sampling requests,
+  its consent answers are ignored, and its `tool.register` frames are **held** (applied on
+  admission), so it cannot change a tool's tier. Deny, timeout (`consentTimeoutMs`) or the
+  asking tab disconnecting → the newcomer is revoked (`session.revoke`, reason `join …`).
+- Reload/reconnect re-attaches the **same** session and keeps its admission (§5.2 resume).
+- Residual: if no admitted session is live (e.g. the only tab is closed or offline), the
+  next session is admitted as the first one. The widget's status shows this, and every
+  admission is audited (`status: "session"`).
 
 ### 5.3 Tool naming (fixes D3)
 
@@ -388,6 +416,11 @@ is the programmatic half (tests / headless).
 
 - `consent` → widget shows a modal: tool name, description, **args**, tier, deadline;
   user approves/denies; the decision is audit-logged.
+- **Consent is bound to the asking session (2026-11-24).** A `consent.result` settles a
+  request only if it arrives on the session the request was sent to. An answer from any
+  other connection is ignored and audited as `impersonation` with its `session`. Request
+  ids are sequential, so without this binding any connected client could approve for
+  another tab by guessing ids.
 - Default when no policy: `read` auto, `write` consent, `dangerous` deny.
 - The page **cannot declare** a tool `read` that it knows mutates state — tier is
   declared by the app, enforced by the bridge; the audit log preserves the declared tier
@@ -408,14 +441,18 @@ is the programmatic half (tests / headless).
 
 ### 7.5 Audit
 - Append-only JSONL at `~/.local/state/glassbox/audit.jsonl` (file 0600, dir 0700):
-  `{ ts, traceId, channel, client, tool, tier, argsHash, consent, ms, status, detail? }`.
+  `{ ts, traceId, channel, client, session?, tool, tier, argsHash, consent, ms, status, detail? }`.
+- `session` (2026-11-24) is the page session involved: on a call line, the session that
+  was asked for consent and ran the call; on an ignored consent answer, its sender; on
+  admission lines, the session joining.
 - `client` is the principal that made the call (MCP stdio client = `stdio`, CLI = `cli`,
   page-initiated = `page`); `argsHash` is the first 16 hex chars of sha256 of the
   canonicalized args; full args logged only when `GLASSBOX_AUDIT_ARGS=1`.
 - `consent` ∈ `auto` (policy auto-allow) | `approved` | `denied` (user denial, timeout,
   or policy deny) — present on every tool.call line.
 - `status` ∈ `ok` | `error` | `deadline` | `lost` | `revoke` | `register` | `unregister`
-  | `session` | `impersonation` (a rejected management-auth attempt, §7.2).
+  | `session` | `impersonation` (a rejected management-auth attempt, §7.2, or a consent
+  answer from a session that was not asked, §7.3).
 - The audit never crashes the bridge: the file sink swallows I/O errors.
 
 ---

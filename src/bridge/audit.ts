@@ -9,6 +9,11 @@ export interface AuditEntry {
 	traceId: string;
 	channel?: string;
 	client?: string;
+	/**
+	 * The page session involved (spec §7.5): for a call, the one that was asked for
+	 * consent and ran it; for an ignored consent answer, the one that sent it.
+	 */
+	session?: string;
 	tool?: string;
 	tier?: string;
 	argsHash?: string;

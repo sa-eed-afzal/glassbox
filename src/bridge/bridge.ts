@@ -34,6 +34,8 @@ const MAX_TIMEOUT_MS = 600_000;
 const DEFAULT_IDLE_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_CODE_TTL_MS = 60_000;
 const DEFAULT_CONSENT_TIMEOUT_MS = 120_000;
+/** Tool name shown in the widget's consent modal when a new connection asks to join (spec §5.2a). */
+export const JOIN_TOOL = "new connection";
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 const DEFAULT_HOST = "127.0.0.1";
 
@@ -139,6 +141,14 @@ export interface Session {
 	created: number;
 	pendingCalls: Map<number, PendingCall>;
 	pendingReqs: Map<number, PendingReq>;
+	/**
+	 * Admission (spec §5.2a). `undefined` until the first attach. The first live
+	 * session on a channel is admitted; a later one waits for a human Approve on an
+	 * admitted tab. Only admitted sessions receive calls, answer consent, or register tools.
+	 */
+	admitted?: boolean;
+	/** tool.register frames from a not-yet-admitted session, applied on admission. */
+	heldRegs: ToolRegisterMsg[];
 }
 
 export interface SessionView {
@@ -279,6 +289,7 @@ export class Bridge {
 			created: now,
 			pendingCalls: new Map(),
 			pendingReqs: new Map(),
+			heldRegs: [],
 		};
 		this.sessions.set(sid, session);
 		this.addSidToChannel(rec.channel, rec.app, rec.origin, sid);
@@ -335,6 +346,7 @@ export class Bridge {
 		s.link = link;
 		this.touchChannel(s.channel);
 		this.resumeIdle(s);
+		if (s.admitted === undefined) this.admit(s);
 	}
 
 	detach(sid: string): void {
@@ -387,6 +399,16 @@ export class Bridge {
 	deliver(sid: string, msg: PageToBridgeMsg): void {
 		const s = this.sessions.get(sid);
 		if (!s || this.closed) return;
+		if (s.admitted !== true) {
+			// Not admitted yet (spec §5.2a): hold registrations, honour a self-revoke,
+			// and ignore everything else. It has no calls or consents to answer.
+			if (msg.type === "tool.register") s.heldRegs.push(msg);
+			else if (msg.type === "tool.unregister")
+				s.heldRegs = s.heldRegs.filter((r) => r.name !== msg.name);
+			else if (msg.type === "session.revoke") this.revoke(s.sid, msg.reason, "page");
+			else if (msg.type === "consent.result") this.resolveConsent(s, msg.id, msg.decision);
+			return;
+		}
 		switch (msg.type) {
 			case "tool.register":
 				this.registerTool(s, msg);
@@ -406,7 +428,7 @@ export class Bridge {
 				this.onCallEvent(s, msg.phase);
 				return;
 			case "consent.result":
-				this.resolveConsent(msg.id, msg.decision === "approved" ? "approved" : "denied");
+				this.resolveConsent(s, msg.id, msg.decision);
 				return;
 			case "session.revoke":
 				// Page-initiated revocation (widget Disconnect): drop server-side (spec §5.2).
@@ -495,6 +517,7 @@ export class Bridge {
 				tier: reg.tier,
 				argsHash,
 				client: this.client,
+				session: session.sid,
 				consent: "denied",
 				ms: this.clock.now() - startedAt,
 				status: "error",
@@ -535,6 +558,7 @@ export class Bridge {
 					tier: reg.tier,
 					argsHash,
 					client: this.client,
+					session: session.sid,
 					consent: "denied",
 					ms: this.clock.now() - startedAt,
 					status: "error",
@@ -596,6 +620,7 @@ export class Bridge {
 					tier: reg.tier,
 					argsHash,
 					client: this.client,
+					session: session.sid,
 					consent,
 					ms: this.clock.now() - startedAt,
 					status: "deadline",
@@ -632,6 +657,7 @@ export class Bridge {
 					tier: reg.tier,
 					argsHash,
 					client: this.client,
+					session: session.sid,
 					consent,
 					ms: this.clock.now() - startedAt,
 					status: "error",
@@ -688,13 +714,114 @@ export class Bridge {
 		});
 	}
 
-	/** A consent.result arrived (or a detach abandoned it): settle the gate. */
-	private resolveConsent(id: number, outcome: ConsentOutcome): void {
+	/**
+	 * A consent.result arrived: settle the gate, but only if it came from the session
+	 * that was asked (spec §7.3). An answer from any other connection is ignored and
+	 * audited, so one tab (or a non-browser client) can never approve for another.
+	 */
+	private resolveConsent(from: Session, id: number, decision: "approved" | "denied"): void {
 		const p = this.pendingConsents.get(id);
 		if (!p) return;
+		if (p.session !== from) {
+			this.record({
+				ts: this.clock.now(),
+				traceId: p.traceId,
+				channel: from.channel,
+				session: from.sid,
+				status: "impersonation",
+				detail: `consent answer for request ${id} came from a session that was not asked; ignored`,
+			});
+			return;
+		}
+		const outcome: ConsentOutcome = decision === "approved" ? "approved" : "denied";
 		this.pendingConsents.delete(id);
 		this.scheduler.cancel(p.deadlineHandle);
 		p.resolve(outcome);
+	}
+
+	/**
+	 * Admission on first attach (spec §5.2a). The first live session on a channel is
+	 * admitted. A later one (a second tab, or a client that paired itself with a code
+	 * the agent minted) waits for a human Approve on the admitted tab that currently
+	 * receives calls; until then it gets no calls and its tool registrations are held.
+	 */
+	private admit(s: Session): void {
+		const ch = this.channels.get(s.channel);
+		const live = ch ? this.liveSids(ch).filter((sid) => sid !== s.sid) : [];
+		if (live.length === 0) {
+			s.admitted = true;
+			this.record({
+				ts: this.clock.now(),
+				traceId: s.sid,
+				channel: s.channel,
+				session: s.sid,
+				status: "session",
+				detail: "admitted (first live connection on this channel)",
+			});
+			return;
+		}
+		s.admitted = false;
+		this.requestJoin(this.pickSession(live), s);
+	}
+
+	private requestJoin(asker: Session, s: Session): void {
+		const id = this.nextId++;
+		const tab = s.tab ? ` (tab "${s.tab}")` : "";
+		const settle = (outcome: ConsentOutcome): void => {
+			if (!this.sessions.has(s.sid)) return; // already gone
+			if (outcome === "approved") {
+				s.admitted = true;
+				this.record({
+					ts: this.clock.now(),
+					traceId: s.sid,
+					channel: s.channel,
+					session: s.sid,
+					status: "session",
+					detail: `admitted: join approved on session ${asker.sid}`,
+				});
+				for (const m of s.heldRegs.splice(0)) this.registerTool(s, m);
+				return;
+			}
+			this.revoke(s.sid, `join ${outcome}`);
+		};
+		const deadlineHandle = this.scheduler.schedule(this.consentTimeoutMs, () => {
+			if (!this.pendingConsents.delete(id)) return;
+			settle("timeout");
+		});
+		this.pendingConsents.set(id, {
+			resolve: settle,
+			deadlineHandle,
+			session: asker,
+			traceId: s.sid,
+		});
+		this.record({
+			ts: this.clock.now(),
+			traceId: s.sid,
+			channel: s.channel,
+			session: s.sid,
+			status: "session",
+			detail: `join requested${tab}: waiting for approval on session ${asker.sid}`,
+		});
+		try {
+			asker.link?.send(
+				encode({
+					type: "consent.request",
+					id,
+					tool: JOIN_TOOL,
+					description:
+						`Another connection${tab} wants to control this page. ` +
+						"Approve only if you just paired this page yourself, for example in a new tab. " +
+						"If you didn't, deny it: something may be trying to act without you.",
+					args: { tab: s.tab || "unknown", app: s.app, origin: s.origin },
+					tier: "dangerous",
+					deadlineMs: this.consentTimeoutMs,
+				}),
+			);
+		} catch {
+			this.pendingConsents.delete(id);
+			this.scheduler.cancel(deadlineHandle);
+			settle("disconnected");
+		}
 	}
 
 	requestPrompt(
@@ -918,6 +1045,7 @@ export class Bridge {
 				tier: p.tier,
 				argsHash: p.argsHash,
 				...(p.client !== undefined ? { client: p.client } : {}),
+				session: s.sid,
 				consent: p.consent,
 				ms,
 				status: "error",
@@ -935,6 +1063,7 @@ export class Bridge {
 			tier: p.tier,
 			argsHash: p.argsHash,
 			...(p.client !== undefined ? { client: p.client } : {}),
+			session: s.sid,
 			consent: p.consent,
 			ms,
 			status: "ok",
@@ -974,6 +1103,7 @@ export class Bridge {
 				tier: p.tier,
 				argsHash: p.argsHash,
 				...(p.client !== undefined ? { client: p.client } : {}),
+				session: s.sid,
 				consent: p.consent,
 				status: "lost",
 				...(p.args !== undefined ? { args: p.args } : {}),
@@ -1014,7 +1144,7 @@ export class Bridge {
 		const out: string[] = [];
 		for (const sid of ch.sids) {
 			const s = this.sessions.get(sid);
-			if (s?.link) out.push(sid);
+			if (s?.link && s.admitted === true) out.push(sid);
 		}
 		return out;
 	}

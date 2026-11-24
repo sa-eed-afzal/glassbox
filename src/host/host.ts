@@ -176,11 +176,18 @@ export function createHost(bridge: Bridge, opts: HostOptions = {}): Promise<Host
 					if (typeof body.code === "string") {
 						// spec §5.2: the exchange carries the page origin; the code is
 						// bound to origin + app, and a mismatch is a typed rejection.
+						// A missing origin is rejected too, so it can't skip the check.
+						if (typeof body.origin !== "string" || body.origin.length === 0) {
+							fail(
+								res,
+								400,
+								GlassboxErrorCode.PROTOCOL_ERROR,
+								"the session exchange must carry the page origin",
+							);
+							return;
+						}
 						json(res, 200, {
-							...bridge.issueSession(
-								body.code,
-								typeof body.origin === "string" ? body.origin : undefined,
-							),
+							...bridge.issueSession(body.code, body.origin),
 							endpoint: endpointUrl(),
 						});
 						return;

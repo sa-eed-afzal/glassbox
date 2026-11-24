@@ -156,7 +156,7 @@ describe("host: real-WS round-trips (spec §5.1, §5.2, §5.5, §7.1)", () => {
 		const mint = bridge.mintCode({ app: APP, origin: ORIGIN });
 
 		// 1. code → session (spec §5.2)
-		const sess = await post(port, "/session", { code: mint.code });
+		const sess = await post(port, "/session", { code: mint.code, origin: ORIGIN });
 		expect(sess.status).toBe(200);
 		expect(sess.json.sid).toBeTruthy();
 		expect(sess.json.sessionToken).toBeTruthy();
@@ -210,6 +210,7 @@ describe("host: real-WS round-trips (spec §5.1, §5.2, §5.5, §7.1)", () => {
 		const { bridge, port } = await start();
 		const sess = await post(port, "/session", {
 			code: bridge.mintCode({ app: APP, origin: ORIGIN }).code,
+			origin: ORIGIN,
 		});
 		const page = new TestPage(String(sess.json.endpoint));
 		await page.waitForOpen();
@@ -238,7 +239,7 @@ describe("host: real-WS round-trips (spec §5.1, §5.2, §5.5, §7.1)", () => {
 
 	it("rejects an unknown code at POST /session with a typed error", async () => {
 		const { port } = await start();
-		const r = await post(port, "/session", { code: "not-a-real-code" });
+		const r = await post(port, "/session", { code: "not-a-real-code", origin: ORIGIN });
 		expect(r.status).toBe(400);
 		expect((r.json.error as WireMsg).code).toBe(GlassboxErrorCode.PROTOCOL_ERROR);
 	});
@@ -248,7 +249,7 @@ describe("host: real-WS round-trips (spec §5.1, §5.2, §5.5, §7.1)", () => {
 		const { bridge, port } = await start(clock);
 		const code = bridge.mintCode({ app: APP, origin: ORIGIN }).code;
 		clock.advance(61_000);
-		const r = await post(port, "/session", { code });
+		const r = await post(port, "/session", { code, origin: ORIGIN });
 		expect(r.status).toBe(401);
 		expect((r.json.error as WireMsg).code).toBe(GlassboxErrorCode.DEADLINE);
 	});
@@ -257,6 +258,7 @@ describe("host: real-WS round-trips (spec §5.1, §5.2, §5.5, §7.1)", () => {
 		const { bridge, port } = await start();
 		const sess = await post(port, "/session", {
 			code: bridge.mintCode({ app: APP, origin: ORIGIN }).code,
+			origin: ORIGIN,
 		});
 		const page = new TestPage(String(sess.json.endpoint));
 		await page.waitForOpen();
@@ -296,6 +298,7 @@ describe("host: real-WS round-trips (spec §5.1, §5.2, §5.5, §7.1)", () => {
 		const { bridge, port } = await start();
 		const sess = await post(port, "/session", {
 			code: bridge.mintCode({ app: APP, origin: ORIGIN }).code,
+			origin: ORIGIN,
 		});
 		const sid = String(sess.json.sid);
 		const token = String(sess.json.sessionToken);
